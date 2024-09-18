@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import * as csvParser from 'csv-parser';
 import { currencyFormatterService } from './utils/formatter';
 import { winstonLogger } from './utils/winston-logger';
+import { Readable } from 'stream';
+import { createObjectCsvStringifier } from 'csv-writer';
 
 @Injectable()
 export class AppService {
@@ -14,6 +16,8 @@ export class AppService {
 
     winstonLogger.info('##### INÍCIO PROCESSO #####');
 
+    let result = [];
+
     const readFilePromise = new Promise<void>((resolve, reject) => {
       const path = __dirname + '/data/data.csv';
 
@@ -23,9 +27,12 @@ export class AppService {
       .pipe(csvParser())
       .on('data', async (data) => {
         // Verifica se o documento é um CPF ou CNPJ válido
-        promises.push(this.validateServive.validateDoc(data.nrCpfCnpj));
+        promises.push(this.validateServive.validateDoc(data.nrCpfCnpj).then((valid)=>{
+          data['validDoc'] = valid;
+        }));
         
-        this.validateServive.validateTotalValue_Installments(data.vlTotal, data.qtPrestacoes, data.vlPresta, data.nrContrato);
+        const validTotalValue_Installments = this.validateServive.validateTotalValue_Installments(data.vlTotal, data.qtPrestacoes, data.vlPresta, data.nrContrato);
+        data['validTotalValue_Installments'] = validTotalValue_Installments;
 
         // Converte os valores para BRL currency
         const monetaryFields = [
@@ -41,6 +48,7 @@ export class AppService {
         monetaryFields.forEach((field)=>{
           data[field] = this.currencyFormatter.format(data[field]);
         });
+        result.push(data);
       })
       .on('end', async () => {
         // Aguarda a conclusão de todas as promises
@@ -51,7 +59,23 @@ export class AppService {
     });
 
     await readFilePromise;
-    return 'Processamento concluído!';
-
+    return result;
   }
+
+  async createCSV(data: any[]): Promise<Readable>{
+    const header = Object.keys(data[0]);
+
+    const csvWriter = createObjectCsvStringifier({
+      header: header.map((header) => ({ id: header, title: header })),
+    });
+
+    const csvContent = csvWriter.getHeaderString() + csvWriter.stringifyRecords(data);
+
+    const stream = new Readable();
+    stream.push(csvContent);
+    stream.push(null); 
+
+    return stream;
+  }
+
 }

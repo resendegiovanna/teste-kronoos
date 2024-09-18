@@ -1,16 +1,21 @@
-import { Controller, Get, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
 import { AppService } from './app.service';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { Express } from 'express'
-import { winstonLogger } from './utils/winston-logger';
+import { Response } from 'express';
 
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
   @Get()
-  async readData() {
-    return await this.appService.readData();
+  async readData(@Res() res: Response) {
+    const data = await this.appService.readData();
+
+    const csvStream = await this.appService.createCSV(data);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="data.csv"');
+
+    csvStream.pipe(res);
   }
 }
  
